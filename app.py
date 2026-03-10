@@ -68,7 +68,9 @@ def answer_question(question: str, history: list) -> tuple[str, list]:
     sources_md = result.format_sources()
     full_answer = f"{result.answer}\n\n---\n**📂 Sources:**\n{sources_md}"
 
-    history.append((question, full_answer))
+    # Gradio 6 messages format: list of {role, content} dicts
+    history.append({"role": "user", "content": question})
+    history.append({"role": "assistant", "content": full_answer})
     return "", history
 
 
@@ -120,14 +122,13 @@ def build_ui() -> gr.Blocks:
             height=480,
         )
 
-        with gr.Row():
-            question_box = gr.Textbox(
-                placeholder="Ask anything about your project's AI documentation…",
-                label="Your question",
-                scale=8,
-                autofocus=True,
-            )
-            send_btn = gr.Button("Send ➤", variant="primary", scale=1)
+        question_box = gr.Textbox(
+            placeholder="Ask anything about your project's AI documentation…",
+            label="Your question",
+            scale=8,
+            autofocus=True,
+        )
+        send_btn = gr.Button("Send ➤", variant="primary", scale=1)
 
         gr.Examples(
             examples=EXAMPLES,
@@ -148,7 +149,7 @@ def build_ui() -> gr.Blocks:
             inputs=[question_box, chatbot],
             outputs=[question_box, chatbot],
         )
-        clear_btn.click(lambda: [], outputs=[chatbot])
+        clear_btn.click(lambda: [], outputs=[chatbot])  # empty list resets messages-format chatbot
 
     return demo
 

@@ -42,7 +42,7 @@ PINECONE_REGION: str = os.getenv("PINECONE_REGION", "us-east-1")
 # ── Models ───────────────────────────────────────────────────────────────────
 # embed-multilingual-v3.0 handles Hebrew+English content well
 COHERE_EMBED_MODEL: str = os.getenv("COHERE_EMBED_MODEL", "embed-multilingual-v3.0")
-COHERE_LLM_MODEL: str = os.getenv("COHERE_LLM_MODEL", "command-r-plus")
+COHERE_LLM_MODEL: str = os.getenv("COHERE_LLM_MODEL", "command-r-plus-08-2024")
 
 # Cohere embed-v3 models produce 1024-dimensional vectors
 EMBEDDING_DIMENSION: int = 1024

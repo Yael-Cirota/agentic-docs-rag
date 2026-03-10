@@ -1,9 +1,8 @@
 """
-query_engine.py – Retrieval with LlamaIndex FAISS + synthesis with Cohere SDK v2.
+query_engine.py – Retrieval with LlamaIndex FAISS + synthesis with Cohere SDK.
 
-The llama-index Cohere LLM wrapper targets the old /v1/chat endpoint which is
-no longer available.  We use the official `cohere` Python SDK (v5+) directly
-for synthesis – it correctly calls /v2/chat.
+Synthesis: Cohere ClientV2 → POST /v2/chat (command-r-plus-08-2024)
+Fallback:  raw retrieved chunks when the LLM endpoint is unreachable.
 """
 from __future__ import annotations
 
@@ -20,15 +19,15 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# Cohere client (v2 API)
-_co: cohere.ClientV2 | None = None
+# Cohere client
+_co_v2: cohere.ClientV2 | None = None
 
 
-def _get_cohere_client() -> cohere.ClientV2:
-    global _co
-    if _co is None:
-        _co = cohere.ClientV2(api_key=config.COHERE_API_KEY)
-    return _co
+def _get_v2_client() -> cohere.ClientV2:
+    global _co_v2
+    if _co_v2 is None:
+        _co_v2 = cohere.ClientV2(api_key=config.COHERE_API_KEY)
+    return _co_v2
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,8 +95,9 @@ def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
         f"Question: {question}"
     )
 
+    # ── Attempt 1: /v2/chat ────────────────────────────────────────────────
     try:
-        co = _get_cohere_client()
+        co = _get_v2_client()
         response = co.chat(
             model=config.COHERE_LLM_MODEL,
             messages=[
@@ -105,20 +105,23 @@ def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
                 {"role": "user",   "content": user_message},
             ],
         )
+        logger.info("Synthesis via /v2/chat succeeded.")
         return response.message.content[0].text
-    except Exception as exc:
-        # LLM endpoint blocked (e.g. NetFree / firewall) – return retrieved chunks directly
-        logger.warning("LLM synthesis unavailable (%s), returning raw chunks.", exc)
-        if not nodes:
-            return "No relevant content found for your question."
-        lines = ["**⚠️ LLM synthesis unavailable – showing retrieved chunks directly:**\n"]
-        for i, nws in enumerate(nodes, 1):
-            meta = nws.node.metadata or {}
-            tool = meta.get("tool", "unknown")
-            fname = meta.get("file_name", "?")
-            snippet = nws.node.get_content()[:600].strip()
-            lines.append(f"**Chunk {i}** · `{tool}` · `{fname}`\n\n{snippet}\n")
-        return "\n---\n".join(lines)
+    except Exception as exc_v2:
+        logger.warning("/v2/chat unavailable (%s), trying /v1/generate …", exc_v2)
+
+
+    # ── Fallback: raw retrieved chunks ───────────────────────────────────────
+    if not nodes:
+        return "No relevant content found for your question."
+    lines = ["**⚠️ LLM synthesis unavailable – showing retrieved chunks directly:**\n"]
+    for i, nws in enumerate(nodes, 1):
+        meta = nws.node.metadata or {}
+        tool = meta.get("tool", "unknown")
+        fname = meta.get("file_name", "?")
+        snippet = nws.node.get_content()[:600].strip()
+        lines.append(f"**Chunk {i}** · `{tool}` · `{fname}`\n\n{snippet}\n")
+    return "\n---\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
