@@ -183,10 +183,20 @@ def main() -> None:
         default=7860,
         help="Port to run the Gradio server on (default: 7860).",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Watch project roots for .md changes and auto-rebuild the index.",
+    )
     args = parser.parse_args()
 
     roots = args.roots or PROJECT_ROOTS
     _init_engine(reindex=args.index or bool(roots), project_roots=roots)
+
+    if args.watch:
+        from watcher import start_watcher
+        start_watcher(project_roots=roots or ["." ], on_rebuilt=_reload_engine)
+        logger.info("File watcher active – index will auto-rebuild on .md changes.")
 
     demo = build_ui()
     demo.launch(

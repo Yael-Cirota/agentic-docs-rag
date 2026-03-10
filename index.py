@@ -1,14 +1,16 @@
 """
-index.py – Standalone script to (re-)index project documents into Pinecone.
+index.py – CLI to (re-)index project documents into FAISS.
 
 Usage
 -----
     python index.py path/to/project1 path/to/project2
+    python index.py ./sample_project --watch    # keep index fresh on file changes
 
 Example
 -------
     python index.py ./sample_project
 """
+import argparse
 import logging
 import sys
 
@@ -18,14 +20,37 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python index.py <project_root> [<project_root> ...]")
-        print("Example: python index.py ./sample_project")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Index .md files into FAISS")
+    parser.add_argument(
+        "roots",
+        nargs="+",
+        metavar="PATH",
+        help="Project root directories containing .md files.",
+    )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="After initial index, watch for .md changes and auto-rebuild.",
+    )
+    args = parser.parse_args()
 
-    roots = sys.argv[1:]
-    print(f"Indexing {len(roots)} project root(s): {roots}")
+    print(f"Indexing {len(args.roots)} project root(s): {args.roots}")
 
     from pipeline import build_index
-    index = build_index(project_roots=roots)
-    print("✅ Indexing complete. You can now run: python app.py")
+    build_index(project_roots=args.roots)
+    print("✅ Indexing complete.")
+
+    if args.watch:
+        import time
+        from watcher import start_watcher
+        print("👁  Watching for .md changes … (Ctrl+C to stop)")
+        observer = start_watcher(project_roots=args.roots)
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nStopping watcher…")
+            observer.stop()
+            observer.join()
+    else:
+        print("You can now run: python app.py")
