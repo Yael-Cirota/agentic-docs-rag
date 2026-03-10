@@ -1,0 +1,21 @@
+# Project Rules
+
+## General
+- Always write code in TypeScript.
+- Use Tailwind CSS for all styling.
+- RTL support is mandatory — the primary audience is Hebrew speakers.
+
+## Design System
+- Primary color: **#2563EB** (blue-600 in Tailwind).
+- Secondary color: **#7C3AED** (violet-600).
+- Font: Inter for Latin, Heebo for Hebrew.
+- All buttons must have a minimum touch target of 44px.
+
+## Database
+- Use PostgreSQL 15 with Prisma ORM.
+- All timestamps must be stored in UTC.
+- Soft-delete pattern: every table has `deleted_at TIMESTAMP`.
+
+## Architecture
+- Follow clean architecture: controllers → services → repositories.
+- Never put business logic inside API route handlers.
