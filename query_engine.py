@@ -1,33 +1,27 @@
 """
-query_engine.py – Retrieval with LlamaIndex FAISS + synthesis with Cohere SDK.
+query_engine.py – Retrieval + Postprocessing + Synthesis via LlamaIndex.
 
-Synthesis: Cohere ClientV2 → POST /v2/chat (command-r-plus-08-2024)
-Fallback:  raw retrieved chunks when the LLM endpoint is unreachable.
+Pipeline:
+  1. VectorIndexRetriever        – FAISS top-K search
+  2. SimilarityPostprocessor     – drop chunks below score threshold
+  3. LongContextReorder          – put best chunks first & last
+  4. ResponseSynthesizer         – LlamaIndex compact synthesis via Cohere LLM
+  Fallback: raw retrieved chunks when the LLM endpoint is unreachable.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 
-import cohere
-
-from llama_index.core import VectorStoreIndex
+from llama_index.core import VectorStoreIndex, get_response_synthesizer
+from llama_index.core.postprocessor import LongContextReorder, SimilarityPostprocessor
 from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.schema import NodeWithScore
+from llama_index.core.schema import NodeWithScore, QueryBundle
+from llama_index.llms.cohere import Cohere
 
 import config
 
 logger = logging.getLogger(__name__)
-
-# Cohere client
-_co_v2: cohere.ClientV2 | None = None
-
-
-def _get_v2_client() -> cohere.ClientV2:
-    global _co_v2
-    if _co_v2 is None:
-        _co_v2 = cohere.ClientV2(api_key=config.COHERE_API_KEY)
-    return _co_v2
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,16 +48,7 @@ class QueryResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Retriever builder
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_query_engine(index: VectorStoreIndex, top_k: int = 5) -> VectorIndexRetriever:
-    """Return a VectorIndexRetriever; synthesis is handled separately via Cohere SDK."""
-    return VectorIndexRetriever(index=index, similarity_top_k=top_k)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Synthesis via Cohere SDK v2
+# Engine builder
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """\
@@ -77,41 +62,50 @@ You may answer in the same language the question was asked in (Hebrew or English
 """
 
 
-def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
-    """Call Cohere /v2/chat with retrieved context.
-    Falls back to a formatted chunk display if the LLM endpoint is unreachable.
-    """
-    context_parts = []
-    for nws in nodes:
-        meta = nws.node.metadata or {}
-        tool = meta.get("tool", "unknown")
-        fname = meta.get("file_name", "?")
-        context_parts.append(f"[{tool} | {fname}]\n{nws.node.get_content()}")
+@dataclass
+class QueryEngine:
+    """Bundles retriever + postprocessors + synthesizer."""
+    retriever: VectorIndexRetriever
+    postprocessors: list
+    synthesizer: object  # ResponseSynthesizer
 
-    context_str = "\n\n---\n\n".join(context_parts) if context_parts else "(no context found)"
 
-    user_message = (
-        f"Context:\n---------------------\n{context_str}\n---------------------\n\n"
-        f"Question: {question}"
+def build_query_engine(index: VectorStoreIndex) -> QueryEngine:
+    """Build and return a QueryEngine with postprocessing and LlamaIndex synthesis."""
+    retriever = VectorIndexRetriever(
+        index=index,
+        similarity_top_k=config.TOP_K,
     )
 
-    # ── Attempt 1: /v2/chat ────────────────────────────────────────────────
-    try:
-        co = _get_v2_client()
-        response = co.chat(
-            model=config.COHERE_LLM_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": user_message},
-            ],
-        )
-        logger.info("Synthesis via /v2/chat succeeded.")
-        return response.message.content[0].text
-    except Exception as exc_v2:
-        logger.warning("/v2/chat unavailable (%s), trying /v1/generate …", exc_v2)
+    postprocessors = [
+        SimilarityPostprocessor(similarity_cutoff=config.SIMILARITY_CUTOFF),
+        LongContextReorder(),
+    ]
+
+    llm = Cohere(
+        model=config.COHERE_LLM_MODEL,
+        api_key=config.COHERE_API_KEY,
+        system_prompt=SYSTEM_PROMPT,
+    )
+
+    synthesizer = get_response_synthesizer(
+        llm=llm,
+        response_mode="compact",
+        verbose=False,
+    )
+
+    return QueryEngine(
+        retriever=retriever,
+        postprocessors=postprocessors,
+        synthesizer=synthesizer,
+    )
 
 
-    # ── Fallback: raw retrieved chunks ───────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Fallback: raw chunks display
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _raw_chunk_fallback(nodes: list[NodeWithScore]) -> str:
     if not nodes:
         return "No relevant content found for your question."
     lines = ["**⚠️ LLM synthesis unavailable – showing retrieved chunks directly:**\n"]
@@ -128,14 +122,30 @@ def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
 # High-level query function
 # ─────────────────────────────────────────────────────────────────────────────
 
-def query(retriever: VectorIndexRetriever, question: str) -> QueryResult:
-    """Retrieve relevant nodes then synthesise an answer with Cohere v2."""
+def query(engine: QueryEngine, question: str) -> QueryResult:
+    """Retrieve → postprocess → synthesize."""
     logger.info("Query: %s", question)
 
-    nodes: list[NodeWithScore] = retriever.retrieve(question)
+    # 1. Retrieve
+    nodes: list[NodeWithScore] = engine.retriever.retrieve(question)
+    logger.info("Retrieved %d nodes from FAISS.", len(nodes))
 
-    answer = _synthesize(question, nodes)
+    # 2. Postprocess
+    query_bundle = QueryBundle(query_str=question)
+    for processor in engine.postprocessors:
+        nodes = processor.postprocess_nodes(nodes, query_bundle=query_bundle)
+    logger.info("After postprocessing: %d nodes remain.", len(nodes))
 
+    # 3. Synthesize
+    try:
+        response = engine.synthesizer.synthesize(question, nodes=nodes)
+        answer = str(response).strip()
+        logger.info("Synthesis succeeded.")
+    except Exception as exc:
+        logger.warning("Synthesis failed (%s), falling back to raw chunks.", exc)
+        answer = _raw_chunk_fallback(nodes)
+
+    # 4. Build sources from postprocessed nodes
     sources: list[dict] = []
     for nws in nodes:
         meta = nws.node.metadata or {}

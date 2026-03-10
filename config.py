@@ -51,6 +51,12 @@ EMBEDDING_DIMENSION: int = 1024
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
 
+# ── Retrieval ────────────────────────────────────────────────────────────────
+# Number of chunks to retrieve from FAISS before postprocessing
+TOP_K: int = int(os.getenv("TOP_K", "5"))
+# Chunks with a similarity score below this threshold are silently dropped
+SIMILARITY_CUTOFF: float = float(os.getenv("SIMILARITY_CUTOFF", "0.35"))
+
 # ── Known Agentic Coding tool folder patterns ────────────────────────────────
 #
 #   Each entry maps a human-readable tool name to the list of directory

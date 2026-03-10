@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Lazy globals (initialised once at startup) ────────────────────────────────
-_engine = None  # RetrieverQueryEngine
+_engine = None  # QueryEngine (retriever + postprocessors + synthesizer)
 
 
 def _init_engine(reindex: bool, project_roots: list[str]) -> None:
@@ -46,7 +46,7 @@ def _init_engine(reindex: bool, project_roots: list[str]) -> None:
         logger.info("Loading FAISS index from disk...")
         index = load_index()
 
-    _engine = build_query_engine(index, top_k=5)
+    _engine = build_query_engine(index)
     logger.info("Query engine ready.")
 
 
