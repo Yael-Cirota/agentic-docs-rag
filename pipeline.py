@@ -87,9 +87,8 @@ def build_index(project_roots: list[str | Path]) -> VectorStoreIndex:
     Full pipeline:
       1. Load .md files from *project_roots*.
       2. Chunk with MarkdownNodeParser + SentenceSplitter.
-      3. Embed with Cohere.
-      4. Store vectors in a local FAISS index on disk.
-      5. Return a LlamaIndex VectorStoreIndex ready for querying.
+      3. Embed with Cohere + store in local FAISS (index_struct kept in sync).
+      4. Persist to disk and return the index.
     """
     logger.info("=== Step 1/4: Loading documents ===")
     documents = load_documents(project_roots)
@@ -100,35 +99,32 @@ def build_index(project_roots: list[str | Path]) -> VectorStoreIndex:
         )
     logger.info("Loaded %d document(s).", len(documents))
 
-    logger.info("=== Step 2/4: Setting up FAISS vector store (local) ===")
+    logger.info("=== Step 2/4: Parsing into nodes (chunk) ===")
+    # IngestionPipeline without an embed model = pure chunking only
+    chunk_pipeline = IngestionPipeline(transformations=_build_node_parsers())
+    nodes = chunk_pipeline.run(documents=documents, show_progress=True)
+    logger.info("Produced %d node(s) after chunking.", len(nodes))
+
+    logger.info("=== Step 3/4: Setting up FAISS vector store (local) ===")
     # IndexFlatIP = inner-product (cosine when vectors are normalised by Cohere)
     faiss_index = faiss.IndexFlatIP(config.EMBEDDING_DIMENSION)
     vector_store = FaissVectorStore(faiss_index=faiss_index)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    logger.info("=== Step 3/4: Running ingestion pipeline (chunk + embed) ===")
+    logger.info("=== Step 4/4: Embedding + building VectorStoreIndex ===")
     embed_model = _build_embed_model()
-
-    ingestion = IngestionPipeline(
-        transformations=[
-            *_build_node_parsers(),
-            embed_model,
-        ],
-        vector_store=vector_store,
-    )
-    nodes = ingestion.run(documents=documents, show_progress=True)
-    logger.info("Ingested %d node(s) into FAISS.", len(nodes))
-
-    logger.info("=== Step 4/4: Building VectorStoreIndex & persisting to disk ===")
+    # Passing nodes here makes VectorStoreIndex embed them AND register them
+    # in index_struct.nodes_dict – keeping FAISS vectors in sync with the docstore.
     index = VectorStoreIndex(
-        nodes=[],
+        nodes=nodes,
         storage_context=storage_context,
-        embed_model=_build_query_embed_model(),
+        embed_model=embed_model,
+        show_progress=True,
     )
 
     FAISS_STORE_DIR.mkdir(exist_ok=True)
     storage_context.persist(persist_dir=str(FAISS_STORE_DIR))
-    logger.info("Index saved to %s", FAISS_STORE_DIR)
+    logger.info("Index saved to %s  (%d nodes)", FAISS_STORE_DIR, len(nodes))
 
     logger.info("Index ready. Pipeline complete.")
     return index
