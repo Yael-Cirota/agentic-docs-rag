@@ -7,6 +7,15 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# ── SSL fix for Windows (Python 3.14 doesn't bundle CA certs) ──────────────────
+try:
+    import truststore
+    truststore.inject_into_ssl()   # use Windows native certificate store
+except ImportError:
+    import certifi, ssl, os
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+
 # Load .env from the project root
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -23,7 +32,7 @@ def _require(key: str) -> str:
 
 # ── API credentials ──────────────────────────────────────────────────────────
 COHERE_API_KEY: str = _require("COHERE_API_KEY")
-PINECONE_API_KEY: str = _require("PINECONE_API_KEY")
+PINECONE_API_KEY: str | None = os.getenv("PINECONE_API_KEY")  # optional – not used with FAISS
 
 # ── Pinecone ─────────────────────────────────────────────────────────────────
 PINECONE_INDEX_NAME: str = os.getenv("PINECONE_INDEX_NAME", "agentic-docs")

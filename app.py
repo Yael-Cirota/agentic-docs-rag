@@ -43,7 +43,7 @@ def _init_engine(reindex: bool, project_roots: list[str]) -> None:
         logger.info("Building index from: %s", project_roots)
         index = build_index(project_roots)
     else:
-        logger.info("Connecting to existing Pinecone index...")
+        logger.info("Loading FAISS index from disk...")
         index = load_index()
 
     _engine = build_query_engine(index, top_k=5)
@@ -75,13 +75,12 @@ def answer_question(question: str, history: list) -> tuple[str, list]:
 def get_index_stats() -> str:
     """Return a short status string shown in the UI."""
     try:
-        import config
-        from pinecone import Pinecone
-        pc = Pinecone(api_key=config.PINECONE_API_KEY)
-        idx = pc.Index(config.PINECONE_INDEX_NAME)
-        stats = idx.describe_index_stats()
-        total = stats.get("total_vector_count", "?")
-        return f"✅ Pinecone index **{config.PINECONE_INDEX_NAME}** — {total} vectors"
+        from pipeline import FAISS_STORE_DIR
+        if not FAISS_STORE_DIR.exists():
+            return "⚠️ FAISS index not built yet. Run: `python index.py ./sample_project`"
+        files = list(FAISS_STORE_DIR.iterdir())
+        size_kb = sum(f.stat().st_size for f in files if f.is_file()) // 1024
+        return f"✅ FAISS index ready at `faiss_store/` — {size_kb} KB on disk"
     except Exception as exc:
         return f"⚠️ Could not fetch index stats: {exc}"
 
@@ -101,11 +100,7 @@ EXAMPLES = [
 # ── Build Gradio interface ────────────────────────────────────────────────────
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(
-        title="Agentic Docs RAG",
-        theme=gr.themes.Soft(primary_hue="blue"),
-        css=".source-box { font-size: 0.85em; }",
-    ) as demo:
+    with gr.Blocks(title="Agentic Docs RAG") as demo:
 
         gr.Markdown(
             """
@@ -123,8 +118,6 @@ def build_ui() -> gr.Blocks:
         chatbot = gr.Chatbot(
             label="Conversation",
             height=480,
-            show_copy_button=True,
-            bubble_full_width=False,
         )
 
         with gr.Row():
@@ -195,7 +188,11 @@ def main() -> None:
     _init_engine(reindex=args.index or bool(roots), project_roots=roots)
 
     demo = build_ui()
-    demo.launch(server_port=args.port, share=False)
+    demo.launch(
+        server_port=args.port,
+        share=False,
+        theme=gr.themes.Soft(primary_hue="blue"),
+    )
 
 
 if __name__ == "__main__":

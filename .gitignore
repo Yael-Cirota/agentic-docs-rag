@@ -26,5 +26,6 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
-# LlamaIndex local storage (if used)
+# LlamaIndex local storage
 storage/
+faiss_store/
