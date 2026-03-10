@@ -79,7 +79,9 @@ You may answer in the same language the question was asked in (Hebrew or English
 
 
 def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
-    """Call Cohere /v2/chat with retrieved context and return the answer string."""
+    """Call Cohere /v2/chat with retrieved context.
+    Falls back to a formatted chunk display if the LLM endpoint is unreachable.
+    """
     context_parts = []
     for nws in nodes:
         meta = nws.node.metadata or {}
@@ -94,15 +96,29 @@ def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
         f"Question: {question}"
     )
 
-    co = _get_cohere_client()
-    response = co.chat(
-        model=config.COHERE_LLM_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": user_message},
-        ],
-    )
-    return response.message.content[0].text
+    try:
+        co = _get_cohere_client()
+        response = co.chat(
+            model=config.COHERE_LLM_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_message},
+            ],
+        )
+        return response.message.content[0].text
+    except Exception as exc:
+        # LLM endpoint blocked (e.g. NetFree / firewall) – return retrieved chunks directly
+        logger.warning("LLM synthesis unavailable (%s), returning raw chunks.", exc)
+        if not nodes:
+            return "No relevant content found for your question."
+        lines = ["**⚠️ LLM synthesis unavailable – showing retrieved chunks directly:**\n"]
+        for i, nws in enumerate(nodes, 1):
+            meta = nws.node.metadata or {}
+            tool = meta.get("tool", "unknown")
+            fname = meta.get("file_name", "?")
+            snippet = nws.node.get_content()[:600].strip()
+            lines.append(f"**Chunk {i}** · `{tool}` · `{fname}`\n\n{snippet}\n")
+        return "\n---\n".join(lines)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
