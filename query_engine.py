@@ -1,51 +1,34 @@
 """
-query_engine.py – Builds a LlamaIndex query engine on top of the Pinecone index.
+query_engine.py – Retrieval with LlamaIndex FAISS + synthesis with Cohere SDK v2.
 
-The engine:
-  • Uses Cohere as the LLM for answer synthesis.
-  • Retrieves top-k semantically similar chunks.
-  • Injects metadata (tool, file, title) into the response so users know
-    *which* tool/file each piece of information came from.
+The llama-index Cohere LLM wrapper targets the old /v1/chat endpoint which is
+no longer available.  We use the official `cohere` Python SDK (v5+) directly
+for synthesis – it correctly calls /v2/chat.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 
+import cohere
+
 from llama_index.core import VectorStoreIndex
-from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.response_synthesizers import get_response_synthesizer
-from llama_index.core.prompts import PromptTemplate
-from llama_index.llms.cohere import Cohere
+from llama_index.core.schema import NodeWithScore
 
 import config
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Custom RAG prompt (Hebrew + English aware)
-# ─────────────────────────────────────────────────────────────────────────────
+# Cohere client (v2 API)
+_co: cohere.ClientV2 | None = None
 
-RAG_SYSTEM_PROMPT = PromptTemplate(
-    """\
-You are a helpful assistant that answers questions about an Agentic Coding project \
-by analysing documentation written by AI coding tools (Cursor, Claude Code, Kiro, etc.).
 
-Answer the question using ONLY the context provided below.
-If the answer is not found in the context, say so clearly.
-Always cite which tool and file the information comes from.
-You may answer in the same language the question was asked in (Hebrew or English).
-
-Context:
----------------------
-{context_str}
----------------------
-
-Question: {query_str}
-
-Answer:"""
-)
+def _get_cohere_client() -> cohere.ClientV2:
+    global _co
+    if _co is None:
+        _co = cohere.ClientV2(api_key=config.COHERE_API_KEY)
+    return _co
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,46 +55,71 @@ class QueryResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Engine builder
+# Retriever builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_query_engine(index: VectorStoreIndex, top_k: int = 5) -> RetrieverQueryEngine:
-    """Return a configured RetrieverQueryEngine backed by the given index."""
-    llm = Cohere(
-        api_key=config.COHERE_API_KEY,
+def build_query_engine(index: VectorStoreIndex, top_k: int = 5) -> VectorIndexRetriever:
+    """Return a VectorIndexRetriever; synthesis is handled separately via Cohere SDK."""
+    return VectorIndexRetriever(index=index, similarity_top_k=top_k)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Synthesis via Cohere SDK v2
+# ─────────────────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """\
+You are a helpful assistant that answers questions about an Agentic Coding project \
+by analysing documentation written by AI coding tools (Cursor, Claude Code, Kiro, etc.).
+
+Answer the question using ONLY the context provided below.
+If the answer is not found in the context, say so clearly.
+Always cite which tool and file the information comes from.
+You may answer in the same language the question was asked in (Hebrew or English).\
+"""
+
+
+def _synthesize(question: str, nodes: list[NodeWithScore]) -> str:
+    """Call Cohere /v2/chat with retrieved context and return the answer string."""
+    context_parts = []
+    for nws in nodes:
+        meta = nws.node.metadata or {}
+        tool = meta.get("tool", "unknown")
+        fname = meta.get("file_name", "?")
+        context_parts.append(f"[{tool} | {fname}]\n{nws.node.get_content()}")
+
+    context_str = "\n\n---\n\n".join(context_parts) if context_parts else "(no context found)"
+
+    user_message = (
+        f"Context:\n---------------------\n{context_str}\n---------------------\n\n"
+        f"Question: {question}"
+    )
+
+    co = _get_cohere_client()
+    response = co.chat(
         model=config.COHERE_LLM_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": user_message},
+        ],
     )
-
-    retriever = VectorIndexRetriever(
-        index=index,
-        similarity_top_k=top_k,
-    )
-
-    response_synthesizer = get_response_synthesizer(
-        llm=llm,
-        text_qa_template=RAG_SYSTEM_PROMPT,
-        response_mode="compact",
-    )
-
-    engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    return engine
+    return response.message.content[0].text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # High-level query function
 # ─────────────────────────────────────────────────────────────────────────────
 
-def query(engine: RetrieverQueryEngine, question: str) -> QueryResult:
-    """Run *question* through the engine and return a structured QueryResult."""
+def query(retriever: VectorIndexRetriever, question: str) -> QueryResult:
+    """Retrieve relevant nodes then synthesise an answer with Cohere v2."""
     logger.info("Query: %s", question)
-    response = engine.query(question)
+
+    nodes: list[NodeWithScore] = retriever.retrieve(question)
+
+    answer = _synthesize(question, nodes)
 
     sources: list[dict] = []
-    for node_with_score in response.source_nodes:
-        meta = node_with_score.node.metadata or {}
+    for nws in nodes:
+        meta = nws.node.metadata or {}
         sources.append(
             {
                 "tool": meta.get("tool", "unknown"),
@@ -119,9 +127,9 @@ def query(engine: RetrieverQueryEngine, question: str) -> QueryResult:
                 "file_path": meta.get("file_path", "?"),
                 "title": meta.get("title", ""),
                 "relative_path": meta.get("relative_path", "?"),
-                "score": node_with_score.score,
-                "text_snippet": node_with_score.node.get_content()[:300],
+                "score": nws.score,
+                "text_snippet": nws.node.get_content()[:300],
             }
         )
 
-    return QueryResult(answer=str(response), sources=sources)
+    return QueryResult(answer=answer, sources=sources)
