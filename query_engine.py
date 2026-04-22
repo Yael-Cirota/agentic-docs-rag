@@ -1,23 +1,22 @@
 """
-query_engine.py – Retrieval + Postprocessing + Synthesis via LlamaIndex.
+query_engine.py – Shared types and helpers for the RAG query pipeline.
 
-Pipeline:
-  1. VectorIndexRetriever        – FAISS top-K search
-  2. SimilarityPostprocessor     – drop chunks below score threshold
-  3. LongContextReorder          – put best chunks first & last
-  4. ResponseSynthesizer         – LlamaIndex compact synthesis via Cohere LLM
-  Fallback: raw retrieved chunks when the LLM endpoint is unreachable.
+NOTE
+----
+QueryEngine, build_query_engine() and query() have been moved to
+rag_workflow.py as part of the event-driven workflow refactor.
+This module now only contains:
+  • QueryResult     – dataclass returned by every query
+  • SYSTEM_PROMPT   – Cohere system prompt string
+  • _raw_chunk_fallback – plain-text fallback when the LLM is unavailable
 """
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
-from llama_index.core import VectorStoreIndex, get_response_synthesizer
-from llama_index.core.postprocessor import LongContextReorder, SimilarityPostprocessor
-from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.schema import NodeWithScore, QueryBundle
-from llama_index.llms.cohere import Cohere
+from llama_index.core.schema import NodeWithScore
 
 import config
 
@@ -32,6 +31,8 @@ logger = logging.getLogger(__name__)
 class QueryResult:
     answer: str
     sources: list[dict] = field(default_factory=list)
+    low_confidence: bool = False
+    warning_only: bool = False
 
     def format_sources(self) -> str:
         if not self.sources:
@@ -48,7 +49,45 @@ class QueryResult:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Engine builder
+# Input validation
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ValidationError(ValueError):
+    """Raised when a user question fails input validation."""
+
+
+_WORD_RE = re.compile(r"\w", re.UNICODE)
+
+
+def validate_question(question: str) -> str:
+    """
+    Normalise and validate a user question.
+    Returns the cleaned question string on success.
+    Raises ValidationError with a user-facing message on failure.
+    """
+    q = question.strip()
+    if len(q) < config.MIN_QUESTION_LENGTH:
+        raise ValidationError(
+            f"Your question is too short – please enter at least "
+            f"{config.MIN_QUESTION_LENGTH} characters."
+        )
+    if not _WORD_RE.search(q):
+        raise ValidationError(
+            "Your question doesn't contain any recognisable words. "
+            "Please rephrase it."
+        )
+    if len(q) > config.MAX_QUESTION_LENGTH:
+        logger.warning(
+            "Question truncated from %d to %d characters.",
+            len(q),
+            config.MAX_QUESTION_LENGTH,
+        )
+        q = q[: config.MAX_QUESTION_LENGTH]
+    return q
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# System prompt
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """\
@@ -62,47 +101,8 @@ You may answer in the same language the question was asked in (Hebrew or English
 """
 
 
-@dataclass
-class QueryEngine:
-    """Bundles retriever + postprocessors + synthesizer."""
-    retriever: VectorIndexRetriever
-    postprocessors: list
-    synthesizer: object  # ResponseSynthesizer
-
-
-def build_query_engine(index: VectorStoreIndex) -> QueryEngine:
-    """Build and return a QueryEngine with postprocessing and LlamaIndex synthesis."""
-    retriever = VectorIndexRetriever(
-        index=index,
-        similarity_top_k=config.TOP_K,
-    )
-
-    postprocessors = [
-        SimilarityPostprocessor(similarity_cutoff=config.SIMILARITY_CUTOFF),
-        LongContextReorder(),
-    ]
-
-    llm = Cohere(
-        model=config.COHERE_LLM_MODEL,
-        api_key=config.COHERE_API_KEY,
-        system_prompt=SYSTEM_PROMPT,
-    )
-
-    synthesizer = get_response_synthesizer(
-        llm=llm,
-        response_mode="compact",
-        verbose=False,
-    )
-
-    return QueryEngine(
-        retriever=retriever,
-        postprocessors=postprocessors,
-        synthesizer=synthesizer,
-    )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Fallback: raw chunks display
+# Fallback helper
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _raw_chunk_fallback(nodes: list[NodeWithScore]) -> str:
@@ -118,47 +118,4 @@ def _raw_chunk_fallback(nodes: list[NodeWithScore]) -> str:
     return "\n---\n".join(lines)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# High-level query function
-# ─────────────────────────────────────────────────────────────────────────────
-
-def query(engine: QueryEngine, question: str) -> QueryResult:
-    """Retrieve → postprocess → synthesize."""
-    logger.info("Query: %s", question)
-
-    # 1. Retrieve
-    nodes: list[NodeWithScore] = engine.retriever.retrieve(question)
-    logger.info("Retrieved %d nodes from FAISS.", len(nodes))
-
-    # 2. Postprocess
-    query_bundle = QueryBundle(query_str=question)
-    for processor in engine.postprocessors:
-        nodes = processor.postprocess_nodes(nodes, query_bundle=query_bundle)
-    logger.info("After postprocessing: %d nodes remain.", len(nodes))
-
-    # 3. Synthesize
-    try:
-        response = engine.synthesizer.synthesize(question, nodes=nodes)
-        answer = str(response).strip()
-        logger.info("Synthesis succeeded.")
-    except Exception as exc:
-        logger.warning("Synthesis failed (%s), falling back to raw chunks.", exc)
-        answer = _raw_chunk_fallback(nodes)
-
-    # 4. Build sources from postprocessed nodes
-    sources: list[dict] = []
-    for nws in nodes:
-        meta = nws.node.metadata or {}
-        sources.append(
-            {
-                "tool": meta.get("tool", "unknown"),
-                "file_name": meta.get("file_name", "?"),
-                "file_path": meta.get("file_path", "?"),
-                "title": meta.get("title", ""),
-                "relative_path": meta.get("relative_path", "?"),
-                "score": nws.score,
-                "text_snippet": nws.node.get_content()[:300],
-            }
-        )
-
-    return QueryResult(answer=answer, sources=sources)
+# (QueryEngine, build_query_engine, query removed – see rag_workflow.py)

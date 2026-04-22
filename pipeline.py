@@ -1,34 +1,21 @@
 """
-pipeline.py – Full indexing pipeline: chunk → embed → store in FAISS (local).
+pipeline.py – Shared helper factories: embedding models, node parsers, and the
+FAISS store path.  The actual indexing logic lives in index_workflow.py.
 
-FAISS stores vectors on disk in ./faiss_store/ – no external service needed.
-Cohere is still used for embedding (requires internet for that API call only).
-
-Usage
------
-    from pipeline import build_index, load_index
-
-    # First run: parse, embed, and save to disk
-    index = build_index(project_roots=["path/to/my-project"])
-
-    # Subsequent runs: load from disk (no re-embedding needed)
-    index = load_index()
+NOTE
+----
+build_index() and load_index() have been moved to index_workflow.py.
+Use ``from index_workflow import run_indexing`` instead.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-import faiss
-
-from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage
 from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
-from llama_index.core.ingestion import IngestionPipeline
 from llama_index.embeddings.cohere import CohereEmbedding
-from llama_index.vector_stores.faiss import FaissVectorStore
 
 import config
-from loader import load_documents
 
 logger = logging.getLogger(__name__)
 
@@ -78,79 +65,4 @@ def _build_node_parsers() -> list:
     ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Public API
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_index(project_roots: list[str | Path]) -> VectorStoreIndex:
-    """
-    Full pipeline:
-      1. Load .md files from *project_roots*.
-      2. Chunk with MarkdownNodeParser + SentenceSplitter.
-      3. Embed with Cohere + store in local FAISS (index_struct kept in sync).
-      4. Persist to disk and return the index.
-    """
-    logger.info("=== Step 1/4: Loading documents ===")
-    documents = load_documents(project_roots)
-    if not documents:
-        raise ValueError(
-            "No markdown documents found. "
-            "Check that project_roots contains .md files."
-        )
-    logger.info("Loaded %d document(s).", len(documents))
-
-    logger.info("=== Step 2/4: Parsing into nodes (chunk) ===")
-    # IngestionPipeline without an embed model = pure chunking only
-    chunk_pipeline = IngestionPipeline(transformations=_build_node_parsers())
-    nodes = chunk_pipeline.run(documents=documents, show_progress=True)
-    logger.info("Produced %d node(s) after chunking.", len(nodes))
-
-    logger.info("=== Step 3/4: Setting up FAISS vector store (local) ===")
-    # IndexFlatIP = inner-product (cosine when vectors are normalised by Cohere)
-    faiss_index = faiss.IndexFlatIP(config.EMBEDDING_DIMENSION)
-    vector_store = FaissVectorStore(faiss_index=faiss_index)
-    storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-    logger.info("=== Step 4/4: Embedding + building VectorStoreIndex ===")
-    embed_model = _build_embed_model()
-    # Passing nodes here makes VectorStoreIndex embed them AND register them
-    # in index_struct.nodes_dict – keeping FAISS vectors in sync with the docstore.
-    index = VectorStoreIndex(
-        nodes=nodes,
-        storage_context=storage_context,
-        embed_model=embed_model,
-        show_progress=True,
-    )
-
-    FAISS_STORE_DIR.mkdir(exist_ok=True)
-    storage_context.persist(persist_dir=str(FAISS_STORE_DIR))
-    logger.info("Index saved to %s  (%d nodes)", FAISS_STORE_DIR, len(nodes))
-
-    logger.info("Index ready. Pipeline complete.")
-    return index
-
-
-def load_index() -> VectorStoreIndex:
-    """
-    Load an existing FAISS index from disk.
-    Use this on subsequent runs when the data is already indexed.
-    """
-    if not FAISS_STORE_DIR.exists():
-        raise FileNotFoundError(
-            f"No FAISS store found at {FAISS_STORE_DIR}. "
-            "Run 'python index.py <project_root>' first."
-        )
-
-    logger.info("Loading FAISS index from %s ...", FAISS_STORE_DIR)
-    vector_store = FaissVectorStore.from_persist_dir(str(FAISS_STORE_DIR))
-    storage_context = StorageContext.from_defaults(
-        vector_store=vector_store,
-        persist_dir=str(FAISS_STORE_DIR),
-    )
-
-    index = load_index_from_storage(
-        storage_context=storage_context,
-        embed_model=_build_query_embed_model(),
-    )
-    logger.info("FAISS index loaded (%d dims).", config.EMBEDDING_DIMENSION)
-    return index
+# (build_index / load_index removed – see index_workflow.py)

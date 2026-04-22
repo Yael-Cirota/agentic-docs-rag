@@ -1,5 +1,5 @@
 """
-index.py – CLI to (re-)index project documents into FAISS.
+index.py – CLI to (re-)index project documents into FAISS via IndexingWorkflow.
 
 Usage
 -----
@@ -11,6 +11,7 @@ Example
     python index.py ./sample_project
 """
 import argparse
+import asyncio
 import logging
 import sys
 
@@ -36,8 +37,8 @@ if __name__ == "__main__":
 
     print(f"Indexing {len(args.roots)} project root(s): {args.roots}")
 
-    from pipeline import build_index
-    build_index(project_roots=args.roots)
+    from index_workflow import run_indexing
+    asyncio.run(run_indexing(reindex=True, project_roots=args.roots))
     print("✅ Indexing complete.")
 
     if args.watch:

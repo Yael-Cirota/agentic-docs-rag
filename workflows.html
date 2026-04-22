@@ -1,0 +1,469 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentic Docs RAG – Workflow Diagrams</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      padding: 2.5rem 2rem 4rem;
+      min-height: 100vh;
+    }
+
+    header { margin-bottom: 2.5rem; }
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #60a5fa 0%, #a78bfa 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 0.4rem;
+    }
+    header p { color: var(--muted); font-size: 0.88rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 2rem;
+      overflow-x: auto;
+    }
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #60a5fa;
+      font-family: 'Courier New', monospace;
+      margin-bottom: 0.3rem;
+    }
+    .card-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 1.2rem;
+    }
+
+    svg { display: block; overflow: visible; max-width: 100%; height: auto; }
+
+    /* ── Tooltip ────────────────────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: #1c2333;
+      border: 1px solid #3b82f6;
+      border-radius: 8px;
+      padding: 0.55rem 0.8rem;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: #e6edf3;
+      max-width: 280px;
+      z-index: 9999;
+      display: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    #tooltip strong { color: #60a5fa; display: block; margin-bottom: 2px; font-size: 0.8rem; }
+    #tooltip .tip-in  { color: #fde68a; font-family: 'Courier New', monospace; font-size: 0.73rem; }
+    #tooltip .tip-out { color: #a7f3d0; font-family: 'Courier New', monospace; font-size: 0.73rem; }
+    #tooltip .tip-desc { color: #c9d1d9; margin-top: 4px; }
+
+    /* ── Legend ─────────────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.4rem;
+      padding: 1.2rem 1.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.55rem; font-size: 0.8rem; color: var(--muted); }
+    .legend-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+    .legend-swatch.start { background:#4c1d95; border:1.5px solid #7c3aed; border-radius:7px; }
+    .legend-swatch.step  { background:#0c2a4a; border:1.5px solid #2563eb; }
+    .legend-swatch.event { background:#3d1c00; border:1.5px solid #d97706; border-radius:7px; }
+    .legend-swatch.stop  { background:#064e3b; border:1.5px solid #10b981; border-radius:7px; }
+    .legend-swatch.arrow { background:transparent; width:22px; height:2px; border-radius:0;
+                           border:none; border-top: 2px solid #6b7280; position:relative; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🔀 Agentic Docs RAG — Workflow Diagrams</h1>
+  <p>LlamaIndex event-driven workflows · each <strong style="color:#bfdbfe">@step</strong> has a typed input event
+     and emits a typed output event · hover nodes for details</p>
+</header>
+
+<div class="card">
+  <div class="card-title">IndexingWorkflow</div>
+  <div class="card-sub">index_workflow.py · decides at runtime whether to load from disk or rebuild the FAISS index</div>
+  <div id="svg-indexing"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">RAGQueryWorkflow</div>
+  <div class="card-sub">rag_workflow.py · per-query retrieve → postprocess → synthesize pipeline with branch on empty results</div>
+  <div id="svg-rag"></div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-swatch start"></span> StartEvent / StopEvent boundary</div>
+  <div class="legend-item"><span class="legend-swatch step"></span>  @step handler</div>
+  <div class="legend-item"><span class="legend-swatch event"></span> Typed Event (payload)</div>
+  <div class="legend-item"><span class="legend-swatch stop"></span>  StopEvent (final result)</div>
+  <div class="legend-item"><span class="legend-swatch arrow"></span> Event triggers step</div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+'use strict';
+const NS  = 'http://www.w3.org/2000/svg';
+const TIP = document.getElementById('tooltip');
+
+// ── SVG element factory ──────────────────────────────────────────────────────
+function el(tag, attrs = {}) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+
+// ── Arrow-head marker factory ────────────────────────────────────────────────
+function addMarker(defs, id, color) {
+  const m = el('marker', { id, markerWidth:10, markerHeight:7, refX:9, refY:3.5, orient:'auto' });
+  m.appendChild(el('polygon', { points:'0 0,10 3.5,0 7', fill:color }));
+  defs.appendChild(m);
+}
+
+// ── Role colour map ──────────────────────────────────────────────────────────
+const ROLE = {
+  start: { fill:'#2e1065', stroke:'#7c3aed', text:'#ddd6fe', mono:true  },
+  step:  { fill:'#0c2a4a', stroke:'#2563eb', text:'#bfdbfe', mono:false },
+  event: { fill:'#3d1c00', stroke:'#d97706', text:'#fde68a', mono:true  },
+  stop:  { fill:'#064e3b', stroke:'#10b981', text:'#a7f3d0', mono:true  },
+};
+
+// ── Draw a node (rect + optional sublabel + tooltip) ────────────────────────
+function drawNode(svg, x, y, w, h, label, role, tip) {
+  const c  = ROLE[role];
+  const rx = (role === 'step') ? 10 : h / 2;
+  const g  = el('g', { style:'cursor:default' });
+
+  // Glow filter on hover via filter:drop-shadow in style
+  const rect = el('rect', {
+    x: x - w/2, y: y - h/2, width: w, height: h, rx,
+    fill: c.fill, stroke: c.stroke, 'stroke-width':'1.5',
+    style:'transition:filter 0.2s',
+  });
+  g.appendChild(rect);
+
+  const labelLines = label.split('\n');
+  const lineH = 14;
+  const startY = y - (labelLines.length - 1) * lineH / 2;
+  labelLines.forEach((line, i) => {
+    const t = el('text', {
+      x, y: startY + i * lineH,
+      'text-anchor':'middle', 'dominant-baseline':'middle',
+      fill: c.text,
+      'font-size': '12.5',
+      'font-weight': role === 'step' ? '600' : '400',
+      'font-family': c.mono ? 'Courier New,monospace' : 'Segoe UI,system-ui,sans-serif',
+      'pointer-events':'none',
+    });
+    t.textContent = line;
+    g.appendChild(t);
+  });
+
+  // Hover tooltip
+  if (tip) {
+    g.addEventListener('mouseenter', (e) => {
+      rect.style.filter = `drop-shadow(0 0 6px ${c.stroke})`;
+      TIP.innerHTML =
+        `<strong>${label.replace('\n','')}</strong>` +
+        (tip.in  ? `<div class="tip-in">  in : ${tip.in}</div>`  : '') +
+        (tip.out ? `<div class="tip-out"> out: ${tip.out}</div>` : '') +
+        (tip.desc ? `<div class="tip-desc">${tip.desc}</div>` : '');
+      TIP.style.display = 'block';
+      moveTip(e);
+    });
+    g.addEventListener('mousemove', moveTip);
+    g.addEventListener('mouseleave', () => {
+      rect.style.filter = '';
+      TIP.style.display = 'none';
+    });
+  }
+
+  svg.appendChild(g);
+}
+
+function moveTip(e) {
+  const pad = 14;
+  let left = e.clientX + pad, top = e.clientY + pad;
+  const box = TIP.getBoundingClientRect();
+  if (left + box.width  > window.innerWidth  - 8) left = e.clientX - box.width  - pad;
+  if (top  + box.height > window.innerHeight - 8) top  = e.clientY - box.height - pad;
+  TIP.style.left = left + 'px';
+  TIP.style.top  = top  + 'px';
+}
+
+// ── Draw an arrow path (static + animated dot) ──────────────────────────────
+let _uid = 0;
+function drawArrow(svg, d, color, markerId, label, animDur) {
+  const pid = 'p' + (_uid++);
+
+  const path = el('path', {
+    id: pid, d, stroke: color, 'stroke-width':'1.5',
+    fill:'none', 'marker-end': `url(#${markerId})`,
+  });
+  svg.appendChild(path);
+
+  // Optional mid-path label
+  if (label) {
+    // Sample t=0.5 of path naively for a label — use a foreignObject trick via textPath
+    const tp = el('textPath', { href:`#${pid}`, startOffset:'50%', 'text-anchor':'middle' });
+    tp.textContent = label;
+    const textEl = el('text', { fill:'#9ca3af', 'font-size':'10', 'font-family':'Courier New,monospace',
+                                dy:'-4' });
+    textEl.appendChild(tp);
+    svg.appendChild(textEl);
+  }
+
+  // Animated travelling dot
+  if (animDur) {
+    const dot = el('circle', { r:'3.5', fill:'#60a5fa', opacity:'0.85' });
+    const am  = el('animateMotion', { dur: animDur + 's', repeatCount:'indefinite',
+                                      calcMode:'linear' });
+    const mp  = el('mpath', {}); mp.setAttribute('href', '#' + pid);
+    am.appendChild(mp);
+    dot.appendChild(am);
+    svg.appendChild(dot);
+  }
+}
+
+// ── Build a fresh SVG with shared defs ───────────────────────────────────────
+function makeSVG(w, h) {
+  const svg  = el('svg', { width: w, height: h, viewBox:`0 0 ${w} ${h}`,
+                            style:'max-width:100%;height:auto' });
+  const defs = el('defs', {});
+  addMarker(defs, 'ag', '#6b7280');
+  addMarker(defs, 'ae', '#d97706');
+  addMarker(defs, 'as', '#10b981');
+  addMarker(defs, 'ab', '#2563eb');
+  svg.appendChild(defs);
+  return svg;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IndexingWorkflow
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildIndexing() {
+  const W = 1020, H = 950;
+  const svg = makeSVG(W, H);
+  const cx  = W / 2;   // 510
+
+  // ── Nodes ──────────────────────────────────────────────────────────────────
+  drawNode(svg, cx,  55, 270, 36, 'StartEvent',        'start',
+    { in:  '—', out: 'routed to check_index',
+      desc: 'Payload: reindex (bool), project_roots (list[str])'});
+
+  drawNode(svg, cx, 160, 192, 40, 'check_index',       'step',
+    { in:  'StartEvent { reindex, project_roots }',
+      out: 'IndexExistsEvent  |  BuildIndexEvent',
+      desc: 'Inspects FAISS store directory; emits the correct branch event.' });
+
+  // ── Left branch (load) ────────────────────────────────────────────────────
+  drawNode(svg, 200, 290, 215, 36, 'IndexExistsEvent', 'event',
+    { in:  '(no payload – presence triggers step)', out: '→ load_from_disk',
+      desc: 'Fired when store on disk AND reindex=False.' });
+
+  drawNode(svg, 200, 395, 188, 40, 'load_from_disk',   'step',
+    { in:  'IndexExistsEvent (trigger only)',
+      out: 'StopEvent { result: VectorStoreIndex }',
+      desc: 'Loads persisted FAISS index without re-embedding.' });
+
+  drawNode(svg, 200, 490, 178, 36, 'StopEvent',        'stop',
+    { out: 'result = VectorStoreIndex (loaded from disk)',
+      desc: 'Fast path – no Cohere API calls made.' });
+
+  // ── Right branch (build) ──────────────────────────────────────────────────
+  drawNode(svg, 820, 290, 202, 36, 'BuildIndexEvent',  'event',
+    { in:  'project_roots: list[str]', out: '→ load_documents',
+      desc: 'Fired when store is missing OR reindex=True.' });
+
+  drawNode(svg, 820, 395, 188, 40, 'load_documents',   'step',
+    { in:  'BuildIndexEvent { project_roots }',
+      out: 'DocsLoadedEvent { documents, project_roots }',
+      desc: 'Discovers & loads all .md / .mdx files via AgenticDocsReader.' });
+
+  drawNode(svg, 820, 495, 225, 36, 'DocsLoadedEvent',  'event',
+    { in:  'documents: list[Document]', out: '→ chunk_nodes',
+      desc: 'Carries loaded Documents + project_roots forward.' });
+
+  drawNode(svg, 820, 600, 183, 40, 'chunk_nodes',      'step',
+    { in:  'DocsLoadedEvent { documents }',
+      out: 'NodesChunkedEvent { nodes }',
+      desc: 'MarkdownNodeParser → SentenceSplitter (512 tok, 50 overlap).' });
+
+  drawNode(svg, 820, 700, 220, 36, 'NodesChunkedEvent','event',
+    { in:  'nodes: list[BaseNode]', out: '→ embed_and_store',
+      desc: 'Carries all chunked nodes forward to the embed step.' });
+
+  drawNode(svg, 820, 805, 193, 40, 'embed_and_store',  'step',
+    { in:  'NodesChunkedEvent { nodes }',
+      out: 'StopEvent { result: VectorStoreIndex }',
+      desc: 'Embeds with Cohere embed-multilingual-v3.0, stores in FAISS IndexFlatIP, persists to faiss_store/.' });
+
+  drawNode(svg, 820, 905, 178, 36, 'StopEvent',        'stop',
+    { out: 'result = VectorStoreIndex (freshly built)',
+      desc: 'Build path complete. Index persisted to disk.' });
+
+  // ── Arrows ─────────────────────────────────────────────────────────────────
+  // StartEvent → check_index
+  drawArrow(svg, `M ${cx} 73 L ${cx} 140`, '#6b7280', 'ag', null, 0.5);
+
+  // check_index → IndexExistsEvent (diagonal left)
+  drawArrow(svg,
+    `M 460 180 Q 310 198 200 272`,
+    '#d97706', 'ae', 'store ready + reindex=False', 1.4);
+
+  // check_index → BuildIndexEvent (diagonal right)
+  drawArrow(svg,
+    `M 560 180 Q 710 198 820 272`,
+    '#d97706', 'ae', 'missing or reindex=True', 1.4);
+
+  // Left branch (vertical)
+  drawArrow(svg, `M 200 308 L 200 375`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 200 415 L 200 472`, '#10b981', 'as', null, 0.4);
+
+  // Right branch (vertical chain)
+  drawArrow(svg, `M 820 308 L 820 375`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 820 415 L 820 477`, '#d97706', 'ae', null, 0.5);
+  drawArrow(svg, `M 820 513 L 820 580`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 820 620 L 820 682`, '#d97706', 'ae', null, 0.5);
+  drawArrow(svg, `M 820 718 L 820 785`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 820 825 L 820 887`, '#10b981', 'as', null, 0.4);
+
+  // Branch labels
+  _branchLabel(svg, 330, 178, 'LOAD BRANCH');
+  _branchLabel(svg, 690, 178, 'BUILD BRANCH');
+
+  document.getElementById('svg-indexing').appendChild(svg);
+}
+
+function _branchLabel(svg, x, y, text) {
+  const t = el('text', {
+    x, y, 'text-anchor':'middle', fill:'#4b5563',
+    'font-size':'9.5', 'font-family':'Segoe UI,system-ui,sans-serif',
+    'letter-spacing':'1.5', 'font-weight':'600',
+  });
+  t.textContent = text;
+  svg.appendChild(t);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RAGQueryWorkflow
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildRAG() {
+  const W = 900, H = 700;
+  const svg = makeSVG(W, H);
+  const cx  = W / 2;   // 450
+
+  // ── Nodes ──────────────────────────────────────────────────────────────────
+  drawNode(svg, cx,  55, 200, 36, 'StartEvent',          'start',
+    { in:  '—', out: 'routed to retrieve',
+      desc: 'Payload: question (str) — the user\'s plain-text query.' });
+
+  drawNode(svg, cx, 158, 178, 40, 'retrieve',            'step',
+    { in:  'StartEvent { question: str }',
+      out: 'RetrievedEvent { question, nodes }',
+      desc: `VectorIndexRetriever pulls top-${5} chunks from FAISS by cosine similarity.` });
+
+  drawNode(svg, cx, 258, 210, 36, 'RetrievedEvent',      'event',
+    { in:  'question: str, nodes: list[NodeWithScore]',
+      out: '→ postprocess',
+      desc: 'Carries raw FAISS hits before any filtering.' });
+
+  drawNode(svg, cx, 358, 178, 40, 'postprocess',         'step',
+    { in:  'RetrievedEvent { question, nodes }',
+      out: 'PostprocessedEvent  |  EmptyResultEvent',
+      desc: 'SimilarityPostprocessor (cutoff 0.35) → LongContextReorder. Branches on whether any nodes survive.' });
+
+  // ── Left branch (results found) ───────────────────────────────────────────
+  drawNode(svg, 228, 468, 218, 36, 'PostprocessedEvent', 'event',
+    { in:  'question, nodes (filtered & reordered)',
+      out: '→ synthesize',
+      desc: '≥1 node survived the similarity cutoff.' });
+
+  drawNode(svg, 228, 568, 178, 40, 'synthesize',         'step',
+    { in:  'PostprocessedEvent { question, nodes }',
+      out: 'StopEvent { result: QueryResult }',
+      desc: 'Cohere command-r-plus-08-2024 via /v1/chat (compact mode). Falls back to raw chunks if LLM is unreachable.' });
+
+  drawNode(svg, 228, 652, 192, 36, 'StopEvent',          'stop',
+    { out: 'result = QueryResult(answer, sources)',
+      desc: 'Happy path — answer synthesised from retrieved context.' });
+
+  // ── Right branch (no results) ─────────────────────────────────────────────
+  drawNode(svg, 672, 468, 198, 36, 'EmptyResultEvent',   'event',
+    { in:  'question: str',
+      out: '→ handle_empty',
+      desc: 'All retrieved nodes fell below the 0.35 similarity cutoff.' });
+
+  drawNode(svg, 672, 568, 178, 40, 'handle_empty',       'step',
+    { in:  'EmptyResultEvent { question }',
+      out: 'StopEvent { result: QueryResult }',
+      desc: 'Returns a graceful "not found" answer without calling the LLM.' });
+
+  drawNode(svg, 672, 652, 192, 36, 'StopEvent',          'stop',
+    { out: 'result = QueryResult(answer="not found", sources=[])',
+      desc: 'Empty path — no Cohere LLM call made.' });
+
+  // ── Arrows ─────────────────────────────────────────────────────────────────
+  // Linear top chain
+  drawArrow(svg, `M ${cx} 73  L ${cx} 138`, '#6b7280', 'ag', null, 0.5);
+  drawArrow(svg, `M ${cx} 178 L ${cx} 240`, '#d97706', 'ae', null, 0.5);
+  drawArrow(svg, `M ${cx} 276 L ${cx} 338`, '#2563eb', 'ab', null, 0.5);
+
+  // postprocess → PostprocessedEvent (left diagonal)
+  drawArrow(svg,
+    `M 412 378 Q 300 396 228 450`,
+    '#d97706', 'ae', '≥1 node survives', 1.2);
+
+  // postprocess → EmptyResultEvent (right diagonal)
+  drawArrow(svg,
+    `M 488 378 Q 600 396 672 450`,
+    '#d97706', 'ae', 'all nodes pruned', 1.2);
+
+  // Left branch vertical
+  drawArrow(svg, `M 228 486 L 228 548`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 228 588 L 228 634`, '#10b981', 'as', null, 0.4);
+
+  // Right branch vertical
+  drawArrow(svg, `M 672 486 L 672 548`, '#2563eb', 'ab', null, 0.5);
+  drawArrow(svg, `M 672 588 L 672 634`, '#10b981', 'as', null, 0.4);
+
+  // Branch labels
+  _branchLabel(svg, 318, 428, 'RESULTS FOUND');
+  _branchLabel(svg, 582, 428, 'EMPTY RESULT');
+
+  document.getElementById('svg-rag').appendChild(svg);
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+buildIndexing();
+buildRAG();
+</script>
+</body>
+</html>

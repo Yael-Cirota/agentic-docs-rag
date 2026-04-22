@@ -57,6 +57,19 @@ TOP_K: int = int(os.getenv("TOP_K", "5"))
 # Chunks with a similarity score below this threshold are silently dropped
 SIMILARITY_CUTOFF: float = float(os.getenv("SIMILARITY_CUTOFF", "0.35"))
 
+# ── Input validation ─────────────────────────────────────────────────────────
+# Minimum characters a question must contain (after stripping whitespace)
+MIN_QUESTION_LENGTH: int = int(os.getenv("MIN_QUESTION_LENGTH", "3"))
+# Maximum characters accepted; longer questions are silently truncated
+MAX_QUESTION_LENGTH: int = int(os.getenv("MAX_QUESTION_LENGTH", "500"))
+# Nodes that survive SIMILARITY_CUTOFF but score below this trigger a
+# low-confidence warning (distinct from "no results found")
+LOW_CONFIDENCE_THRESHOLD: float = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.50"))
+
+# ── Structured extraction store ───────────────────────────────────────────────
+# Path to the JSON file that holds pre-extracted decisions, rules, warnings, etc.
+STRUCTURED_STORE_PATH: str = "structured_store/items.json"
+
 # ── Known Agentic Coding tool folder patterns ────────────────────────────────
 #
 #   Each entry maps a human-readable tool name to the list of directory

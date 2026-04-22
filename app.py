@@ -6,10 +6,36 @@ Run:
 
 Optional flags:
     --index   Re-index all documents before launching (use after adding new files).
+
+Architecture
+------------
+Every user query is handled by an event-driven LlamaIndex Workflow:
+
+  ┌───────────────────────────────────────────┐
+  │  IndexingWorkflow                          │
+  │  StartEvent → check_index                 │
+  │    ├─ IndexExistsEvent  → load_from_disk   │
+  │    └─ BuildIndexEvent   → load_documents   │
+  │                          → chunk_nodes     │
+  │                          → embed_and_store │
+  └───────────────────────────────────────────┘
+
+  ┌───────────────────────────────────────────┐
+  │  RouterWorkflow  (per query)               │
+  │  StartEvent → classify                    │
+  │    ├─ SemanticQueryEvent                  │
+  │    │     → RAGQueryWorkflow               │
+  │    │           → retrieve → postprocess  │
+  │    │           → synthesize / handle_empty│
+  │    └─ StructuredQueryEvent               │
+  │          → structured_query              │
+  │          → Cohere synthesize             │
+  └───────────────────────────────────────────┘
 """
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -25,14 +51,23 @@ logger = logging.getLogger(__name__)
 
 
 # ── Lazy globals (initialised once at startup) ────────────────────────────────
-_engine = None  # QueryEngine (retriever + postprocessors + synthesizer)
+_workflow = None  # RouterWorkflow | None  – lives for the lifetime of the process
 
 
-def _init_engine(reindex: bool, project_roots: list[str]) -> None:
-    """Initialise the query engine (called once at app startup)."""
-    global _engine
-    from pipeline import build_index, load_index
-    from query_engine import build_query_engine
+def _init_workflow(reindex: bool, project_roots: list[str]) -> None:
+    """
+    Bootstrap step:
+      1. Run IndexingWorkflow (builds or loads FAISS index).
+      2. Run extraction (builds or loads structured_store/items.json).
+      3. Create a long-lived RouterWorkflow that is reused for every query.
+    """
+    global _workflow
+    from index_workflow import run_indexing
+    from rag_workflow import RAGQueryWorkflow
+    from router_workflow import RouterWorkflow
+    from extractor import extract_from_documents
+    from structured_store import StructuredStore
+    from loader import load_documents
 
     if reindex or project_roots:
         if not project_roots:
@@ -40,33 +75,88 @@ def _init_engine(reindex: bool, project_roots: list[str]) -> None:
                 "No project roots specified for reindexing. "
                 "Edit PROJECT_ROOTS in app.py or pass --roots."
             )
-        logger.info("Building index from: %s", project_roots)
-        index = build_index(project_roots)
+        logger.info("Running IndexingWorkflow (build branch) for: %s", project_roots)
     else:
-        logger.info("Loading FAISS index from disk...")
-        index = load_index()
+        logger.info("Running IndexingWorkflow (load-from-disk branch) …")
 
-    _engine = build_query_engine(index)
-    logger.info("Query engine ready.")
+    index = asyncio.run(
+        run_indexing(reindex=reindex, project_roots=project_roots)
+    )
+
+    # ── Structured extraction ──────────────────────────────────────────────
+    # Re-load raw documents for extraction (cheap: just file reads, no embedding).
+    # extract_from_documents() uses a cached JSON file unless force=True.
+    # force only when --index was explicitly passed, not just --roots.
+    if project_roots:
+        documents = load_documents(project_roots)
+        items = extract_from_documents(documents, force=reindex)
+    else:
+        # Load branch: use cached store; if it doesn't exist yet, skip gracefully.
+        try:
+            items = extract_from_documents([], force=False)
+        except Exception as exc:
+            logger.warning("[init] Could not load structured store: %s", exc)
+            items = []
+
+    store = StructuredStore(items)
+    rag = RAGQueryWorkflow(index=index, timeout=60)
+    _workflow = RouterWorkflow(rag_workflow=rag, store=store, timeout=90)
+    logger.info("RouterWorkflow ready (semantic + structured retrieval active).")
+
+
+def _reload_engine(new_index) -> None:
+    """Hot-swap the RouterWorkflow after a watcher-triggered index rebuild."""
+    global _workflow
+    from rag_workflow import RAGQueryWorkflow
+    from router_workflow import RouterWorkflow
+    # Reuse the existing structured store (watcher only rebuilds the vector index)
+    existing_store = _workflow._store if _workflow is not None else None
+    if existing_store is None:
+        from structured_store import StructuredStore
+        existing_store = StructuredStore([])
+    rag = RAGQueryWorkflow(index=new_index, timeout=60)
+    _workflow = RouterWorkflow(rag_workflow=rag, store=existing_store, timeout=90)
+    logger.info("RouterWorkflow hot-swapped after index rebuild.")
 
 
 # ── Gradio callback ───────────────────────────────────────────────────────────
 
-def answer_question(question: str, history: list) -> tuple[str, list]:
-    """Process a user question and return the answer + updated history."""
+async def answer_question(question: str, history: list) -> tuple[str, list]:
+    """Process a user question through RAGQueryWorkflow and return the answer."""
     if not question.strip():
         return "", history
 
-    if _engine is None:
-        return "⚠️ Engine not initialised yet. Please wait a moment.", history
+    history = list(history)  # avoid mutating the caller's list
 
-    from query_engine import query as run_query
+    if _workflow is None:
+        history.append({"role": "user", "content": question})
+        history.append({
+            "role": "assistant",
+            "content": "⚠️ System is still initialising. Please wait a moment and try again.",
+        })
+        return "", history
 
-    result = run_query(_engine, question)
+    from query_engine import QueryResult
 
-    # Format the full response with sources
+    result: QueryResult = await _workflow.run(question=question)
+
+    if result.warning_only:
+        warning_md = (
+            "⚠️ **Warning**\n\n"
+            f"{result.answer}"
+        )
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": warning_md})
+        return "", history
+
     sources_md = result.format_sources()
-    full_answer = f"{result.answer}\n\n---\n**📂 Sources:**\n{sources_md}"
+    confidence_note = (
+        "> ⚠️ **Low confidence** – the retrieved content may not closely match your "
+        "question. Consider rephrasing or asking about a more specific topic.\n\n"
+        if result.low_confidence
+        else ""
+    )
+    full_answer = f"{confidence_note}{result.answer}\n\n---\n**📂 Sources:**\n{sources_md}"
 
     # Gradio 6 messages format: list of {role, content} dicts
     history.append({"role": "user", "content": question})
@@ -191,7 +281,7 @@ def main() -> None:
     args = parser.parse_args()
 
     roots = args.roots or PROJECT_ROOTS
-    _init_engine(reindex=args.index or bool(roots), project_roots=roots)
+    _init_workflow(reindex=args.index, project_roots=roots)
 
     if args.watch:
         from watcher import start_watcher
@@ -199,11 +289,23 @@ def main() -> None:
         logger.info("File watcher active – index will auto-rebuild on .md changes.")
 
     demo = build_ui()
-    demo.launch(
-        server_port=args.port,
-        share=False,
-        theme=gr.themes.Soft(primary_hue="blue"),
-    )
+    try:
+        demo.launch(
+            server_port=args.port,
+            share=False,
+            theme=gr.themes.Soft(primary_hue="blue"),
+        )
+    except ValueError as exc:
+        if "localhost is not accessible" not in str(exc):
+            raise
+        logger.warning(
+            "Localhost is not accessible in this environment; retrying with share=True."
+        )
+        demo.launch(
+            server_port=args.port,
+            share=True,
+            theme=gr.themes.Soft(primary_hue="blue"),
+        )
 
 
 if __name__ == "__main__":

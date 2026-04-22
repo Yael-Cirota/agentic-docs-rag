@@ -1,0 +1,722 @@
+[
+  {
+    "type": "rule",
+    "description": "Enable TypeScript strict mode and avoid using 'any' types.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- TypeScript strict mode enabled — no `any` types."
+  },
+  {
+    "type": "rule",
+    "description": "All API responses must adhere to the JSend specification.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All API responses follow the JSend spec: `{ status, data, message }`."
+  },
+  {
+    "type": "rule",
+    "description": "Document error codes in the specified file.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Error codes are documented in `docs/error-codes.md`."
+  },
+  {
+    "type": "warning",
+    "description": "Refactoring of PaymentService requires explicit approval due to Stripe webhook handling.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **PaymentService** — handles Stripe webhooks. Do NOT refactor without explicit approval."
+  },
+  {
+    "type": "warning",
+    "description": "Changes to AuthMiddleware require a security review due to JWT validation logic.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **AuthMiddleware** — JWT validation logic. Changes here require a security review."
+  },
+  {
+    "type": "decision",
+    "description": "Limit memory usage to 512 MB per container.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- The hosting provider limits memory to 512 MB per container."
+  },
+  {
+    "type": "decision",
+    "description": "Cold start time must not exceed 3 seconds, avoiding heavy synchronous imports.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Cold start time must stay under 3 seconds; avoid heavy synchronous imports."
+  },
+  {
+    "type": "decision",
+    "description": "Wrap external API calls with a retry mechanism, allowing a maximum of 3 attempts.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- External API calls must be wrapped with a retry mechanism (max 3 attempts)."
+  },
+  {
+    "type": "rule",
+    "description": "Place all user-facing strings in the specified Hebrew and English locale files.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All user-facing strings must be placed in `locales/he.json` (Hebrew) and `locales/en.json`."
+  },
+  {
+    "type": "rule",
+    "description": "Set the default locale to Hebrew.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- The default locale is Hebrew (`he`)."
+  },
+  {
+    "type": "rule",
+    "description": "Format dates using DD/MM/YYYY for display and ISO 8601 for storage.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Date formatting: `DD/MM/YYYY` for display, ISO 8601 for storage."
+  },
+  {
+    "type": "rule",
+    "description": "Maintain a minimum unit-test coverage of 80%.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Minimum unit-test coverage: 80%."
+  },
+  {
+    "type": "rule",
+    "description": "Integration tests are located in the specified directory.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Integration tests live in `src/__tests__/integration/`."
+  },
+  {
+    "type": "rule",
+    "description": "Mock all third-party HTTP calls during testing to avoid hitting real APIs.",
+    "source_file": "CLAUDE.md",
+    "tool": "claude_code",
+    "title": "Claude Code Instructions",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Mock all third-party HTTP calls; never hit real APIs in tests."
+  },
+  {
+    "type": "decision",
+    "description": "Use UUIDs for primary keys in the 'invoices' and 'invoice_line_items' tables.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Database Changes",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- New table `invoices`:\n  ```\n  id            UUID PRIMARY KEY\n  user_id       UUID REFERENCES users(id)\n  project_id    UUID REFERENCES projects(id)\n  invoice_number VARCHAR(20) UNIQUE\n  issued_at   "
+  },
+  {
+    "type": "decision",
+    "description": "Create a new table 'invoice_line_items' to store line items for each invoice.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Database Changes",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- New table `invoice_line_items`:\n  ```\n  id            UUID PRIMARY KEY\n  invoice_id    UUID REFERENCES invoices(id)\n  description   TEXT\n  quantity      DECIMAL(10,2)\n  unit_price_ils DECIMAL(10,2)\n"
+  },
+  {
+    "type": "rule",
+    "description": "Invoice number format: `INV-{YYYY}-{sequential 5-digit number}`",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "4. Invoice number format: `INV-{YYYY}-{sequential 5-digit number}`, e.g. `INV-2026-00042`."
+  },
+  {
+    "type": "rule",
+    "description": "Invoices must be immutable once issued.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "5. Invoices are immutable once issued — no editing allowed."
+  },
+  {
+    "type": "rule",
+    "description": "PDF generation must complete within 5 seconds.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- PDF generation must complete within 5 seconds."
+  },
+  {
+    "type": "rule",
+    "description": "Invoice PDFs should be stored in S3 with a specific path structure.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Invoice PDFs stored in S3 under `invoices/{user_id}/{invoice_id}.pdf`."
+  },
+  {
+    "type": "change",
+    "description": "Schema design for the new 'invoices' and 'invoice_line_items' tables has been approved.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- [x] Schema design approved"
+  },
+  {
+    "type": "change",
+    "description": "PDF generation library selection is pending (options: Puppeteer, PDFKit).",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- [ ] PDF generation library selected (candidates: Puppeteer, PDFKit)"
+  },
+  {
+    "type": "change",
+    "description": "Implementation of the invoice generation feature is in progress.",
+    "source_file": "invoice-generation.md",
+    "tool": "kiro",
+    "title": "Feature Spec: Invoice Generation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- [ ] Implementation in progress"
+  },
+  {
+    "type": "rule",
+    "description": "All UI components must support right-to-left layout.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "RTL & Localisation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "All UI components MUST support RTL layout."
+  },
+  {
+    "type": "rule",
+    "description": "Hebrew is the primary language, with English as secondary.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "RTL & Localisation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "Hebrew is the primary language; English is secondary."
+  },
+  {
+    "type": "rule",
+    "description": "Currency should be displayed with the Israeli Shekel symbol prefix.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "RTL & Localisation",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "Currency display: ₪ prefix, e.g. `₪1,250.00`."
+  },
+  {
+    "type": "dependency",
+    "description": "Frontend framework is Next.js 14 with App Router.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS"
+  },
+  {
+    "type": "dependency",
+    "description": "TypeScript is used for type safety.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS"
+  },
+  {
+    "type": "dependency",
+    "description": "Tailwind CSS is the styling framework.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS"
+  },
+  {
+    "type": "dependency",
+    "description": "Node.js is the backend runtime.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Backend**: Node.js, Express, Prisma ORM"
+  },
+  {
+    "type": "dependency",
+    "description": "Express.js is used for backend routing.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Backend**: Node.js, Express, Prisma ORM"
+  },
+  {
+    "type": "dependency",
+    "description": "Prisma ORM is used for database interactions.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Backend**: Node.js, Express, Prisma ORM"
+  },
+  {
+    "type": "dependency",
+    "description": "PostgreSQL 15 is the database.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Database**: PostgreSQL 15"
+  },
+  {
+    "type": "dependency",
+    "description": "NextAuth.js is used for authentication with Google and Email providers.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Auth**: NextAuth.js with Google + Email providers"
+  },
+  {
+    "type": "dependency",
+    "description": "Stripe is integrated for payments in Israeli Shekels.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Payments**: Stripe (Israeli Shekel, NIS ₪)"
+  },
+  {
+    "type": "dependency",
+    "description": "AWS S3 is used for file storage.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **File storage**: AWS S3"
+  },
+  {
+    "type": "dependency",
+    "description": "Resend is used for email services.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Technology Stack",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Email**: Resend"
+  },
+  {
+    "type": "change",
+    "description": "Added `archived_at` column to the Projects table on December 10, 2025.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Database Schema Notes",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Projects table: added `archived_at` column on 2025-12-10."
+  },
+  {
+    "type": "change",
+    "description": "Added `priority` ENUM field to the Tasks table on January 15, 2026.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Database Schema Notes",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Tasks table: added `priority` ENUM (`low`, `medium`, `high`, `critical`) on 2026-01-15."
+  },
+  {
+    "type": "change",
+    "description": "Migrated `duration_minutes` field to `duration_seconds` in Time entries table on February 1, 2026.",
+    "source_file": "product.md",
+    "tool": "kiro",
+    "title": "Database Schema Notes",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Time entries table: `duration_seconds` replaces the old `duration_minutes` field (migration run 2026-02-01)."
+  },
+  {
+    "type": "decision",
+    "description": "Set container memory limit to 512 MB as per hosting provider's enforcement.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Kiro Steering — Technical Constraints",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Container memory limit: 512 MB (enforced by hosting provider)."
+  },
+  {
+    "type": "decision",
+    "description": "Limit maximum concurrent Dctions to 20 using PgBouncer pool.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Infrastructure Limits",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Max concurrent Dctions: 20 (PgBouncer pool)."
+  },
+  {
+    "type": "decision",
+    "description": "Set CDN asset max size to 5 MB per file.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Infrastructure Limits",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- CDN asset max size: 5 MB per file."
+  },
+  {
+    "type": "decision",
+    "description": "Set API p95 response time target to 300 ms or less.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Performance Requirements",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- API p95 response time: ≤ 300 ms."
+  },
+  {
+    "type": "decision",
+    "description": "Ensure initial page load (LCP) is 2.5 seconds or less on 4G.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Performance Requirements",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Initial page load (LCP): ≤ 2.5 s on 4G."
+  },
+  {
+    "type": "decision",
+    "description": "Cold start should be 3 seconds or less, avoiding synchronous heavy imports at module level.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Performance Requirements",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Cold start: ≤ 3 s (no synchronous heavy imports at module level)."
+  },
+  {
+    "type": "rule",
+    "description": "Use Zod schemas for input validation, avoiding manual parsing.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Security Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All inputs validated with Zod schemas — no manual parsing."
+  },
+  {
+    "type": "rule",
+    "description": "Hash passwords with bcrypt using a cost factor of 12.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Security Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Passwords hashed with bcrypt, cost factor 12."
+  },
+  {
+    "type": "rule",
+    "description": "Set JWT token expiration to 1 hour and refresh tokens to 30 days.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Security Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- JWT tokens expire after 1 hour; refresh tokens after 30 days."
+  },
+  {
+    "type": "rule",
+    "description": "Implement rate limiting of 100 requests per minute per IP on public endpoints.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Security Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Rate limiting: 100 requests / minute per IP on public endpoints."
+  },
+  {
+    "type": "rule",
+    "description": "Verify Stripe webhooks using `stripe.webhooks.constructEvent`.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Third-Party API Constraints",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Stripe webhooks must be verified with `stripe.webhooks.constructEvent`."
+  },
+  {
+    "type": "rule",
+    "description": "Wrap all external HTTP calls in retry logic with 3 attempts and exponential back-off.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Third-Party API Constraints",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All external HTTP calls wrapped in retry logic: 3 attempts, exponential back-off."
+  },
+  {
+    "type": "rule",
+    "description": "Set AWS S3 presigned URLs to expire after 15 minutes.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Third-Party API Constraints",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- AWS S3 presigned URLs expire after 15 minutes."
+  },
+  {
+    "type": "warning",
+    "description": "The `ReportingService` has performance issues with large datasets (>10k rows), tracked in issue #342. Avoid adding new queries until fixed.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Known Technical Debt",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- The `ReportingService` has a performance issue with large datasets (>10k rows). \n  Tracked in issue #342. Avoid adding new queries to it until fixed."
+  },
+  {
+    "type": "warning",
+    "description": "Legacy `v1` REST API routes are still active for mobile app backwards compatibility, planned for deprecation in Q3 2026.",
+    "source_file": "tech-constraints.md",
+    "tool": "kiro",
+    "title": "Known Technical Debt",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Legacy `v1` REST API routes still active for mobile app backwards compatibility.\n  Planned deprecation: Q3 2026."
+  },
+  {
+    "type": "rule",
+    "description": "Use TypeScript for all code.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Cursor Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Always write code in TypeScript."
+  },
+  {
+    "type": "rule",
+    "description": "Utilize Tailwind CSS for styling.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Cursor Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Use Tailwind CSS for all styling."
+  },
+  {
+    "type": "rule",
+    "description": "Ensure RTL support for Hebrew speakers.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Cursor Rules",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- RTL support is mandatory — the primary audience is Hebrew speakers."
+  },
+  {
+    "type": "rule",
+    "description": "Set the primary color to blue-600 in Tailwind.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Design System",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Primary color: **#2563EB** (blue-600 in Tailwind)."
+  },
+  {
+    "type": "rule",
+    "description": "Define the secondary color as violet-600.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Design System",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Secondary color: **#7C3AED** (violet-600)."
+  },
+  {
+    "type": "rule",
+    "description": "Use Inter font for Latin and Heebo for Hebrew.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Design System",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Font: Inter for Latin, Heebo for Hebrew."
+  },
+  {
+    "type": "rule",
+    "description": "Maintain a minimum touch target of 44px for buttons.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Design System",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All buttons must have a minimum touch target of 44px."
+  },
+  {
+    "type": "dependency",
+    "description": "Utilize PostgreSQL 15 with Prisma ORM.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Database",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Use PostgreSQL 15 with Prisma ORM."
+  },
+  {
+    "type": "rule",
+    "description": "Store all timestamps in UTC.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Database",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- All timestamps must be stored in UTC."
+  },
+  {
+    "type": "rule",
+    "description": "Implement a soft-delete pattern with a deleted_at column.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Database",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Soft-delete pattern: every table has `deleted_at TIMESTAMP`."
+  },
+  {
+    "type": "decision",
+    "description": "Follow the clean architecture pattern.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Architecture",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Follow clean architecture: controllers → services → repositories."
+  },
+  {
+    "type": "rule",
+    "description": "Avoid placing business logic within API route handlers.",
+    "source_file": "project-rules.md",
+    "tool": "cursor",
+    "title": "Architecture",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Never put business logic inside API route handlers."
+  },
+  {
+    "type": "change",
+    "description": "Migrated duration field from minutes to seconds in the time entries table.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-03-01",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Migrated `duration_minutes` → `duration_seconds` in `time_entries` table."
+  },
+  {
+    "type": "change",
+    "description": "Updated all time-tracking API endpoints to reflect the duration change.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-03-01",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Updated all time-tracking API endpoints."
+  },
+  {
+    "type": "change",
+    "description": "Mobile API v1 temporarily returns duration in seconds and a v1 adapter is added.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-03-01",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- **Breaking**: mobile API v1 temporarily returns `duration_seconds`; v1 adapter added."
+  },
+  {
+    "type": "change",
+    "description": "Added a priority field to the Tasks table with four priority levels.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-02-15",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Added `priority` field to Tasks table (ENUM: low / medium / high / critical)."
+  },
+  {
+    "type": "change",
+    "description": "Set the default priority for all existing tasks to medium via migration.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-02-15",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Default priority set to `medium` for all existing tasks via migration."
+  },
+  {
+    "type": "change",
+    "description": "Replaced bcrypt with @node-rs/bcrypt for faster hashing without changing the algorithm.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-02-10",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Replaced `bcrypt` with `@node-rs/bcrypt` for 3× faster hashing (same algorithm)."
+  },
+  {
+    "type": "change",
+    "description": "Completed a security review with no behaviour change.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-02-10",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Security review completed — no behaviour change."
+  },
+  {
+    "type": "change",
+    "description": "Fixed RTL dropdown menu mirroring issue in Firefox by updating DropdownMenu.tsx.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-01-20",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- RTL fix: dropdown menus were mirrored incorrectly in Firefox. Fixed in `DropdownMenu.tsx`."
+  },
+  {
+    "type": "change",
+    "description": "Added dir=\"rtl\" to the root <html> tag permanently.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2026-01-20",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Added `dir=\"rtl\"` to root `<html>` tag permanently (was being set dynamically)."
+  },
+  {
+    "type": "change",
+    "description": "Added an archived_at column to the projects table.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2025-12-10",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Added `archived_at` column to `projects` table."
+  },
+  {
+    "type": "change",
+    "description": "Shipped the projects archive feature to production.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2025-12-10",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Projects archive feature shipped to production."
+  },
+  {
+    "type": "change",
+    "description": "Upgraded Stripe integration from v2 to v3 webhooks.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2025-11-05",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Stripe integration upgraded from v2 to v3 webhooks."
+  },
+  {
+    "type": "change",
+    "description": "Decommissioned the old Stripe v2 webhook endpoint.",
+    "source_file": "changelog.md",
+    "tool": "claude_code",
+    "title": "2025-11-05",
+    "date_extracted": "2026-04-22T20:42:26.134246+00:00",
+    "raw_text": "- Old webhook endpoint `/api/webhooks/stripe-v2` decommissioned."
+  }
+]
